@@ -75,15 +75,16 @@ const Complaints: React.FC = () => {
       
       const complaintsData: Complaint[] = [];
       
-      for (const doc of querySnapshot.docs) {
-        const data = doc.data() as Complaint;
+      for (const docSnapshot of querySnapshot.docs) {
+        const data = docSnapshot.data() as Complaint;
         
         // If student name is missing, fetch it
         if (!data.studentName && data.studentId) {
           try {
             const studentDoc = await getDoc(doc(db, 'users', data.studentId));
             if (studentDoc.exists()) {
-              data.studentName = studentDoc.data().name;
+              const studentData = studentDoc.data();
+              data.studentName = studentData.name;
             }
           } catch (error) {
             console.error("Error fetching student name:", error);
@@ -91,7 +92,7 @@ const Complaints: React.FC = () => {
         }
         
         complaintsData.push({
-          id: doc.id,
+          id: docSnapshot.id,
           ...data
         } as Complaint);
       }
@@ -384,7 +385,8 @@ const Complaints: React.FC = () => {
                               </Button>
                               <Button 
                                 size="sm" 
-                                variant="success"
+                                variant="outline"
+                                className="bg-green-500 text-white hover:bg-green-600"
                                 onClick={() => openResolveDialog(complaint)}
                               >
                                 Resolve
