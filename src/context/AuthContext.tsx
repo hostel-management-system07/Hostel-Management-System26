@@ -5,9 +5,10 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  User as FirebaseUser
+  User as FirebaseUser,
+  updateProfile
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +20,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, role: 'student' | 'admin', name: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateUserProfile: (userData: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,6 +71,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      
+      // Update profile with name
+      await updateProfile(user, { displayName: name });
       
       // Create user document in Firestore
       await setDoc(doc(db, 'users', user.uid), {
@@ -129,6 +134,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserProfile = async (userData: Partial<User>) => {
+    if (!currentUser) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to update your profile",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, { ...userData });
+      
+      // Update the local state
+      setUserDetails(prev => prev ? { ...prev, ...userData } : null);
+      
+      // Update displayName if provided
+      if (userData.name && currentUser) {
+        await updateProfile(currentUser, { displayName: userData.name });
+      }
+      
+      toast({
+        title: "Success",
+        description: "Profile updated successfully!",
+      });
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update profile",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
   const value = {
     currentUser,
     userDetails,
@@ -136,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    updateUserProfile,
   };
 
   return (

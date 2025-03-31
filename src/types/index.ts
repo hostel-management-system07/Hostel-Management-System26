@@ -1,4 +1,3 @@
-
 // User types
 export interface User {
   id: string;
@@ -36,14 +35,17 @@ export interface Fee {
 export interface Complaint {
   id: string;
   studentId: string;
+  studentName?: string;
   roomNumber: string;
   title: string;
   description: string;
   category: string;
-  status: 'pending' | 'in-progress' | 'resolved';
   priority: 'low' | 'medium' | 'high';
+  status: 'pending' | 'in-progress' | 'resolved';
   createdAt: string;
   resolvedAt?: string;
+  assignedTo?: string;
+  resolution?: string;
 }
 
 // Announcement types
@@ -74,4 +76,21 @@ export interface Admin extends User {
   staffId: string;
   department: string;
   contactNumber: string;
+}
+
+export interface FeeRecord {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  amount: number;
+  dueDate: string;
+  status: 'pending' | 'paid' | 'overdue';
+  paymentDate?: string;
+  transactionId?: string;
+}
+
+export interface RoomWithStudents extends Room {
+  students: User[];
+  rentPerMonth?: number;
 }
