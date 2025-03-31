@@ -17,6 +17,7 @@ const Sidebar: React.FC = () => {
     { name: 'Fee Payment', href: '/fee-payment', icon: CreditCard },
     { name: 'Notifications', href: '/notifications', icon: Bell },
     { name: 'Profile', href: '/profile', icon: User },
+    { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
   const adminNavItems = [

@@ -13,13 +13,15 @@ import AdminDashboard from "./pages/AdminDashboard";
 import RoomBooking from "./pages/RoomBooking";
 import NotFound from "./pages/NotFound";
 import ManageStudents from "./pages/ManageStudents";
-
-// Placeholder components for routes we'll implement later
-const ManageRooms = () => <div>Manage Rooms Page - Coming Soon</div>;
-const Complaints = () => <div>Complaints Page - Coming Soon</div>;
-const FeeManagement = () => <div>Fee Management Page - Coming Soon</div>;
-const Announcements = () => <div>Announcements Page - Coming Soon</div>;
-const Settings = () => <div>Settings Page - Coming Soon</div>;
+import ManageRooms from "./pages/ManageRooms";
+import Complaints from "./pages/Complaints";
+import FeeManagement from "./pages/FeeManagement";
+import Announcements from "./pages/Announcements";
+import Settings from "./pages/Settings";
+import MyComplaints from "./pages/MyComplaints";
+import FeePayment from "./pages/FeePayment";
+import Notifications from "./pages/Notifications";
+import Profile from "./pages/Profile";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +39,12 @@ const App = () => (
             <Route path="/student-dashboard" element={<StudentDashboard />} />
             <Route path="/admin-dashboard" element={<AdminDashboard />} />
             <Route path="/room-booking" element={<RoomBooking />} />
+            
+            {/* Student routes */}
+            <Route path="/my-complaints" element={<MyComplaints />} />
+            <Route path="/fee-payment" element={<FeePayment />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/profile" element={<Profile />} />
             
             {/* Admin routes */}
             <Route path="/manage-rooms" element={<ManageRooms />} />
