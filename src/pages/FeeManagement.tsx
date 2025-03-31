@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { useToast } from '@/hooks/use-toast';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
+import { useToast } from '@/hooks/use-toast';
+import { 
   Table,
   TableBody,
   TableCell,
@@ -16,13 +16,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -30,94 +23,83 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Badge } from '@/components/ui/badge';
 import { 
+  CreditCard, 
   Search, 
-  Send, 
-  AlertCircle,
-  CreditCard,
-  DollarSign,
-  Calendar,
-  Users,
-  Download,
-  ChevronLeft,
-  ChevronRight
+  Plus, 
+  Filter, 
+  Check, 
+  AlertTriangle, 
+  Clock,
+  CalendarClock,
+  DollarSign
 } from 'lucide-react';
+import { FeeRecord } from '@/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Fee } from '@/types';
-
-interface FeeRecord extends Fee {
-  studentName?: string;
-  studentEmail?: string;
-}
-
-interface Student {
-  id: string;
-  name: string;
-  email: string;
-  roomNumber?: string;
-  course?: string;
-  year?: string;
-}
+import { format } from 'date-fns';
 
 const FeeManagement: React.FC = () => {
+  const { toast } = useToast();
   const [fees, setFees] = useState<FeeRecord[]>([]);
   const [filteredFees, setFilteredFees] = useState<FeeRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [showAddFeeDialog, setShowAddFeeDialog] = useState(false);
-  const [showSendReminderDialog, setShowSendReminderDialog] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState('');
-  const { toast } = useToast();
-
-  // Form state for adding fee
-  const [formData, setFormData] = useState({
-    amount: 5000,
-    dueDate: '',
-    studentId: ''
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showMarkPaidDialog, setShowMarkPaidDialog] = useState(false);
+  const [selectedFee, setSelectedFee] = useState<FeeRecord | null>(null);
+  
+  const [feeForm, setFeeForm] = useState({
+    studentId: '',
+    studentName: '',
+    amount: '',
+    dueDate: new Date(),
   });
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  
+  const [paymentForm, setPaymentForm] = useState({
+    transactionId: '',
+    paymentDate: new Date(),
+  });
 
   useEffect(() => {
     fetchFees();
-    fetchStudents();
   }, []);
 
   useEffect(() => {
+    // Apply filters
     let filtered = [...fees];
     
     if (searchTerm) {
-      filtered = filtered.filter(
-        fee =>
-          fee.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          fee.studentEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(fee => 
+        (fee.studentName && fee.studentName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (fee.studentEmail && fee.studentEmail.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        fee.studentId.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
-    if (statusFilter) {
+    if (statusFilter !== 'all') {
       filtered = filtered.filter(fee => fee.status === statusFilter);
     }
     
     setFilteredFees(filtered);
-    setCurrentPage(1); // Reset to first page on filter change
   }, [searchTerm, statusFilter, fees]);
 
   const fetchFees = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const q = query(
-        collection(db, 'fees'),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await getDocs(collection(db, 'fees'));
       
       const feesData: FeeRecord[] = [];
+      
       querySnapshot.forEach((doc) => {
         feesData.push({
           id: doc.id,
@@ -125,428 +107,267 @@ const FeeManagement: React.FC = () => {
         } as FeeRecord);
       });
       
-      // If no fees found, create sample data
+      // Create sample data if none exists
       if (feesData.length === 0) {
-        // First fetch some students to create fee records for
-        const studentsQuery = query(collection(db, 'users'), where('role', '==', 'student'));
-        const studentsSnapshot = await getDocs(studentsQuery);
-        
-        const studentsList: Student[] = [];
-        studentsSnapshot.forEach(doc => {
-          const data = doc.data();
-          studentsList.push({
-            id: doc.id,
-            name: data.name || 'Student',
-            email: data.email || 'student@example.com',
-            roomNumber: data.roomNumber,
-            course: data.course,
-            year: data.year
-          });
-        });
-        
-        // If no students found, create a couple of sample students
-        if (studentsList.length === 0) {
-          const sample1 = {
-            name: 'John Doe',
-            email: 'john@example.com',
-            role: 'student',
-            createdAt: serverTimestamp()
-          };
-          
-          const sample2 = {
-            name: 'Jane Smith',
-            email: 'jane@example.com',
-            role: 'student',
-            createdAt: serverTimestamp()
-          };
-          
-          const student1Ref = await addDoc(collection(db, 'users'), sample1);
-          const student2Ref = await addDoc(collection(db, 'users'), sample2);
-          
-          studentsList.push({
-            id: student1Ref.id,
-            name: sample1.name,
-            email: sample1.email
-          });
-          
-          studentsList.push({
-            id: student2Ref.id,
-            name: sample2.name,
-            email: sample2.email
-          });
-        }
-        
-        // Create sample fee records
-        const currentDate = new Date();
-        
-        // Due date for next month
-        const nextMonth = new Date();
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        
-        // Due date for last month (overdue)
-        const lastMonth = new Date();
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        
-        // Create fee records for each student
-        for (const student of studentsList) {
-          // Current month fee (paid)
-          await addDoc(collection(db, 'fees'), {
-            studentId: student.id,
-            studentName: student.name,
-            studentEmail: student.email,
+        const sampleFees = [
+          {
+            id: "fee1",
+            studentId: "student1",
+            studentName: "John Doe",
+            studentEmail: "john@example.com",
             amount: 5000,
-            dueDate: currentDate.toISOString(),
-            status: 'paid',
-            paymentDate: new Date(currentDate.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            transactionId: 'TXN' + Math.floor(Math.random() * 1000000),
-            createdAt: serverTimestamp(),
-          });
-          
-          // Next month fee (pending)
-          await addDoc(collection(db, 'fees'), {
-            studentId: student.id,
-            studentName: student.name,
-            studentEmail: student.email,
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+            status: 'pending' as 'pending' | 'paid' | 'overdue'
+          },
+          {
+            id: "fee2",
+            studentId: "student2",
+            studentName: "Jane Smith",
+            studentEmail: "jane@example.com",
             amount: 5000,
-            dueDate: nextMonth.toISOString(),
-            status: 'pending',
-            createdAt: serverTimestamp(),
-          });
-          
-          // Add an overdue fee for one student
-          if (student === studentsList[0]) {
-            await addDoc(collection(db, 'fees'), {
-              studentId: student.id,
-              studentName: student.name,
-              studentEmail: student.email,
-              amount: 5000,
-              dueDate: lastMonth.toISOString(),
-              status: 'overdue',
-              createdAt: serverTimestamp(),
-            });
+            dueDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+            status: 'overdue' as 'pending' | 'paid' | 'overdue'
+          },
+          {
+            id: "fee3",
+            studentId: "student3",
+            studentName: "Mike Johnson",
+            studentEmail: "mike@example.com",
+            amount: 5000,
+            dueDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(), // 15 days ago
+            status: 'paid' as 'pending' | 'paid' | 'overdue',
+            paymentDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days ago
+            transactionId: "TXNID123456"
           }
-        }
+        ];
         
-        // Re-fetch to get the sample data with IDs
-        return fetchFees();
+        setFees(sampleFees);
+        setFilteredFees(sampleFees);
+        setLoading(false);
+        return;
       }
+      
+      // Sort by due date (closest first)
+      feesData.sort((a, b) => 
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
       
       setFees(feesData);
       setFilteredFees(feesData);
     } catch (error) {
-      console.error('Error fetching fees:', error);
+      console.error("Error fetching fees:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to load fee records',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to load fee records",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchStudents = async () => {
-    try {
-      const studentsQuery = query(collection(db, 'users'), where('role', '==', 'student'));
-      const studentsSnapshot = await getDocs(studentsQuery);
-      
-      const studentsList: Student[] = [];
-      studentsSnapshot.forEach(doc => {
-        const data = doc.data();
-        studentsList.push({
-          id: doc.id,
-          name: data.name || 'Student',
-          email: data.email || 'student@example.com',
-          roomNumber: data.roomNumber,
-          course: data.course,
-          year: data.year
-        });
-      });
-      
-      setStudents(studentsList);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: name === 'amount' ? Number(value) : value
-    });
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData({
-      ...formData,
-      [name]: value
-    });
-    
-    if (name === 'studentId') {
-      setSelectedStudentId(value);
-    }
-  };
-
   const handleAddFee = async () => {
-    if (!formData.studentId || !formData.dueDate || formData.amount <= 0) {
+    if (!feeForm.studentId || !feeForm.studentName || !feeForm.amount) {
       toast({
-        title: 'Error',
-        description: 'Please fill in all fields correctly',
-        variant: 'destructive',
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
       });
       return;
     }
     
     try {
-      const selectedStudent = students.find(s => s.id === formData.studentId);
-      
-      if (!selectedStudent) {
-        toast({
-          title: 'Error',
-          description: 'Selected student not found',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
       const feeData = {
-        studentId: formData.studentId,
-        studentName: selectedStudent.name,
-        studentEmail: selectedStudent.email,
-        amount: formData.amount,
-        dueDate: new Date(formData.dueDate).toISOString(),
-        status: 'pending',
-        createdAt: serverTimestamp(),
+        studentId: feeForm.studentId,
+        studentName: feeForm.studentName,
+        amount: parseInt(feeForm.amount),
+        dueDate: feeForm.dueDate.toISOString(),
+        status: 'pending' as 'pending' | 'paid' | 'overdue',
+        createdAt: serverTimestamp()
       };
       
       const docRef = await addDoc(collection(db, 'fees'), feeData);
       
-      // Add notification for student
+      const newFee: FeeRecord = {
+        id: docRef.id,
+        ...feeData
+      };
+      
+      setFees([...fees, newFee]);
+      
+      // Add notification for the student
       await addDoc(collection(db, 'notifications'), {
-        title: 'New Fee Added',
-        message: `A new fee of ₹${formData.amount} has been added to your account with due date ${new Date(formData.dueDate).toLocaleDateString()}`,
+        title: 'Fee Payment Due',
+        message: `You have a fee payment of ₹${feeForm.amount} due on ${format(feeForm.dueDate, 'MMM dd, yyyy')}`,
         type: 'fee',
-        userId: formData.studentId,
+        userId: feeForm.studentId,
         createdAt: serverTimestamp(),
         read: false
       });
       
-      const newFee = { 
-        id: docRef.id, 
-        ...feeData,
-        createdAt: new Date().toISOString()
-      } as FeeRecord;
-      
-      setFees([newFee, ...fees]);
-      
       toast({
-        title: 'Success',
-        description: `Fee record added for ${selectedStudent.name}`,
+        title: "Success",
+        description: "Fee record added successfully",
       });
       
-      setShowAddFeeDialog(false);
-      resetForm();
+      // Reset form and close dialog
+      setFeeForm({
+        studentId: '',
+        studentName: '',
+        amount: '',
+        dueDate: new Date()
+      });
+      setShowAddDialog(false);
     } catch (error) {
-      console.error('Error adding fee record:', error);
+      console.error("Error adding fee:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to add fee record',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to add fee record",
+        variant: "destructive",
       });
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      amount: 5000,
-      dueDate: '',
-      studentId: ''
-    });
-    setSelectedStudentId('');
-  };
-
-  const openAddFeeDialog = () => {
-    const today = new Date();
-    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const formattedDate = nextMonth.toISOString().split('T')[0];
+  const handleMarkPaid = async () => {
+    if (!selectedFee || !paymentForm.transactionId) return;
     
-    setFormData({
-      amount: 5000,
-      dueDate: formattedDate,
-      studentId: ''
-    });
-    
-    setShowAddFeeDialog(true);
-  };
-
-  const openSendReminderDialog = () => {
-    setShowSendReminderDialog(true);
-  };
-
-  const handleSendReminders = async () => {
     try {
-      // Get all pending and overdue fees
-      const pendingFees = fees.filter(fee => 
-        fee.status === 'pending' || fee.status === 'overdue'
-      );
-      
-      // Create notifications for each student
-      for (const fee of pendingFees) {
-        await addDoc(collection(db, 'notifications'), {
-          title: fee.status === 'overdue' ? 'Urgent: Overdue Fee' : 'Fee Payment Reminder',
-          message: fee.status === 'overdue' 
-            ? `Your fee payment of ₹${fee.amount} is overdue. Please clear your dues immediately to avoid penalties.`
-            : `Reminder: Your fee payment of ₹${fee.amount} is due on ${new Date(fee.dueDate).toLocaleDateString()}. Please make the payment on time.`,
-          type: 'fee',
-          userId: fee.studentId,
-          createdAt: serverTimestamp(),
-          read: false
-        });
-      }
-      
-      toast({
-        title: 'Reminders Sent',
-        description: `Fee reminders sent to ${pendingFees.length} student(s)`,
+      await updateDoc(doc(db, 'fees', selectedFee.id), {
+        status: 'paid' as 'pending' | 'paid' | 'overdue',
+        paymentDate: paymentForm.paymentDate.toISOString(),
+        transactionId: paymentForm.transactionId
       });
       
-      setShowSendReminderDialog(false);
-    } catch (error) {
-      console.error('Error sending reminders:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to send fee reminders',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleMarkAsPaid = async (feeId: string) => {
-    try {
-      await updateDoc(doc(db, 'fees', feeId), {
-        status: 'paid',
-        paymentDate: new Date().toISOString(),
-        transactionId: 'MANUAL-' + Math.floor(Math.random() * 1000000),
-      });
-      
-      // Update the fees list
-      const updatedFees = fees.map(fee =>
-        fee.id === feeId
+      // Update state
+      const updatedFees = fees.map(fee => 
+        fee.id === selectedFee.id
           ? { 
               ...fee, 
-              status: 'paid',
-              paymentDate: new Date().toISOString(),
-              transactionId: 'MANUAL-' + Math.floor(Math.random() * 1000000)
+              status: 'paid' as 'pending' | 'paid' | 'overdue',
+              paymentDate: paymentForm.paymentDate.toISOString(),
+              transactionId: paymentForm.transactionId
             }
           : fee
-      );
+      ) as FeeRecord[];
       
       setFees(updatedFees);
       
-      // Find the fee to get student details
-      const fee = fees.find(f => f.id === feeId);
-      
-      if (fee) {
-        // Add notification for student
-        await addDoc(collection(db, 'notifications'), {
-          title: 'Fee Payment Recorded',
-          message: `Your fee payment of ₹${fee.amount} has been recorded by the admin.`,
-          type: 'fee',
-          userId: fee.studentId,
-          createdAt: serverTimestamp(),
-          read: false
-        });
-      }
+      // Add notification for the student
+      await addDoc(collection(db, 'notifications'), {
+        title: 'Payment Confirmed',
+        message: `Your payment of ₹${selectedFee.amount} has been received and confirmed.`,
+        type: 'fee',
+        userId: selectedFee.studentId,
+        createdAt: serverTimestamp(),
+        read: false
+      });
       
       toast({
-        title: 'Payment Recorded',
-        description: 'The fee has been marked as paid',
+        title: "Success",
+        description: "Fee marked as paid",
+      });
+      
+      setShowMarkPaidDialog(false);
+      setPaymentForm({
+        transactionId: '',
+        paymentDate: new Date()
       });
     } catch (error) {
-      console.error('Error marking fee as paid:', error);
+      console.error("Error marking fee as paid:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to update payment status',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to update fee status",
+        variant: "destructive",
       });
     }
   };
 
-  const handleMarkAsOverdue = async (feeId: string) => {
+  const handleSendReminder = async (fee: FeeRecord) => {
     try {
-      await updateDoc(doc(db, 'fees', feeId), {
-        status: 'overdue',
+      // In a real app, you might send an email here
+      // For now, we'll just create a notification
+      
+      await addDoc(collection(db, 'notifications'), {
+        title: 'Fee Payment Reminder',
+        message: `This is a reminder that your fee payment of ₹${fee.amount} is due on ${new Date(fee.dueDate).toLocaleDateString()}. Please make the payment as soon as possible.`,
+        type: 'fee',
+        userId: fee.studentId,
+        createdAt: serverTimestamp(),
+        read: false
       });
       
-      // Update the fees list
-      const updatedFees = fees.map(fee =>
-        fee.id === feeId
-          ? { ...fee, status: 'overdue' }
-          : fee
-      );
-      
-      setFees(updatedFees);
-      
-      // Find the fee to get student details
-      const fee = fees.find(f => f.id === feeId);
-      
-      if (fee) {
-        // Add notification for student
-        await addDoc(collection(db, 'notifications'), {
-          title: 'Fee Payment Overdue',
-          message: `Your fee payment of ₹${fee.amount} is now overdue. Please make the payment immediately to avoid penalties.`,
-          type: 'fee',
-          userId: fee.studentId,
-          createdAt: serverTimestamp(),
-          read: false
-        });
-      }
-      
       toast({
-        title: 'Status Updated',
-        description: 'The fee has been marked as overdue',
+        title: "Success",
+        description: "Reminder sent successfully",
       });
     } catch (error) {
-      console.error('Error marking fee as overdue:', error);
+      console.error("Error sending reminder:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to update payment status',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to send reminder",
+        variant: "destructive",
       });
     }
+  };
+
+  const openMarkPaidDialog = (fee: FeeRecord) => {
+    setSelectedFee(fee);
+    setPaymentForm({
+      transactionId: '',
+      paymentDate: new Date()
+    });
+    setShowMarkPaidDialog(true);
   };
 
   const getFeeStatusBadge = (status: string) => {
     switch (status) {
       case 'paid':
         return <Badge className="bg-green-500 hover:bg-green-600">Paid</Badge>;
+      case 'pending':
+        return <Badge className="bg-yellow-500 hover:bg-yellow-600">Pending</Badge>;
       case 'overdue':
         return <Badge className="bg-red-500 hover:bg-red-600">Overdue</Badge>;
-      case 'pending':
       default:
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600">Pending</Badge>;
+        return <Badge>Unknown</Badge>;
     }
   };
-
-  // Statistics
-  const totalFees = fees.length;
-  const paidFees = fees.filter(fee => fee.status === 'paid').length;
-  const pendingFees = fees.filter(fee => fee.status === 'pending').length;
-  const overdueFees = fees.filter(fee => fee.status === 'overdue').length;
   
-  const totalAmount = fees.reduce((sum, fee) => sum + fee.amount, 0);
-  const collectedAmount = fees.filter(fee => fee.status === 'paid')
-    .reduce((sum, fee) => sum + fee.amount, 0);
-  const pendingAmount = fees.filter(fee => fee.status !== 'paid')
+  const getDaysDifference = (dateStr: string) => {
+    const today = new Date();
+    const date = new Date(dateStr);
+    const diffTime = date.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Update any overdue fees
+  useEffect(() => {
+    const checkOverdueFees = () => {
+      const today = new Date();
+      const updatedFees = fees.map(fee => {
+        if (fee.status === 'pending' && new Date(fee.dueDate) < today) {
+          return { ...fee, status: 'overdue' as 'pending' | 'paid' | 'overdue' };
+        }
+        return fee;
+      });
+
+      if (JSON.stringify(updatedFees) !== JSON.stringify(fees)) {
+        setFees(updatedFees as FeeRecord[]);
+      }
+    };
+
+    checkOverdueFees();
+  }, [fees]);
+
+  // Calculate statistics
+  const totalFeesCollected = fees
+    .filter(fee => fee.status === 'paid')
     .reduce((sum, fee) => sum + fee.amount, 0);
     
-  const collectionRate = totalAmount > 0 ? (collectedAmount / totalAmount) * 100 : 0;
-
-  // Pagination
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentFees = filteredFees.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredFees.length / itemsPerPage);
+  const totalPendingAmount = fees
+    .filter(fee => fee.status === 'pending' || fee.status === 'overdue')
+    .reduce((sum, fee) => sum + fee.amount, 0);
+  
+  const overdueCount = fees.filter(fee => fee.status === 'overdue').length;
 
   return (
     <DashboardLayout requiredRole="admin">
@@ -554,95 +375,90 @@ const FeeManagement: React.FC = () => {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Fee Management</h1>
-            <p className="text-gray-500">Track and manage hostel fee payments</p>
+            <p className="text-gray-500">
+              Manage student fees and payments
+            </p>
           </div>
-          <div className="space-x-2">
-            <Button variant="outline" onClick={openSendReminderDialog}>
-              <Send className="mr-2 h-4 w-4" /> Send Reminders
-            </Button>
-            <Button onClick={openAddFeeDialog}>
-              <CreditCard className="mr-2 h-4 w-4" /> Add Fee
-            </Button>
-          </div>
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Add New Fee
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Collection Rate</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-green-600" />
+                Fees Collected
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{Math.round(collectionRate)}%</div>
-              <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
-                <div 
-                  className="bg-blue-600 h-1.5 rounded-full" 
-                  style={{ width: `${collectionRate}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                ₹{collectedAmount} of ₹{totalAmount}
+              <div className="text-3xl font-bold">₹{totalFeesCollected}</div>
+              <p className="text-sm text-gray-500">
+                Total amount collected from students
               </p>
             </CardContent>
           </Card>
           
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Paid Fees</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-yellow-600" />
+                Pending Payments
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-green-600">{paidFees}</div>
-              <p className="text-xs text-gray-500 mt-1">Amount: ₹{collectedAmount}</p>
+              <div className="text-3xl font-bold">₹{totalPendingAmount}</div>
+              <p className="text-sm text-gray-500">
+                Total pending fee amount
+              </p>
             </CardContent>
           </Card>
           
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Pending Fees</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+                Overdue Fees
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-yellow-600">{pendingFees}</div>
-              <p className="text-xs text-gray-500 mt-1">Due soon</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Overdue Fees</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-red-600">{overdueFees}</div>
-              <p className="text-xs text-gray-500 mt-1">Need attention</p>
+              <div className="text-3xl font-bold">{overdueCount}</div>
+              <p className="text-sm text-gray-500">
+                Number of overdue fee payments
+              </p>
             </CardContent>
           </Card>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Fee Records</CardTitle>
-            <CardDescription>
-              Manage student fee payments and dues
-            </CardDescription>
-            <div className="flex items-center justify-between mt-4">
-              <div className="relative w-64">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search by student..."
-                  className="pl-8"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Fee Records</CardTitle>
+                <CardDescription>
+                  View and manage student fee payments
+                </CardDescription>
               </div>
-              <div className="flex items-center space-x-2">
-                <p className="text-sm text-gray-500">Filter:</p>
-                <Select value={statusFilter || ""} onValueChange={(value) => setStatusFilter(value || null)}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="All Status" />
+              <div className="flex gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by student..."
+                    className="pl-8 w-64"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="overdue">Overdue</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -653,109 +469,113 @@ const FeeManagement: React.FC = () => {
               <div className="flex justify-center items-center h-40">
                 <div className="w-12 h-12 border-t-4 border-blue-500 border-solid rounded-full animate-spin"></div>
               </div>
-            ) : currentFees.length > 0 ? (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Student</TableHead>
-                      <TableHead>Fee Amount</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Payment Date</TableHead>
-                      <TableHead>Transaction ID</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentFees.map(fee => (
-                      <TableRow key={fee.id}>
-                        <TableCell>
-                          <div className="font-medium">{fee.studentName}</div>
-                          <div className="text-sm text-gray-500">{fee.studentEmail}</div>
-                        </TableCell>
-                        <TableCell>₹{fee.amount}</TableCell>
-                        <TableCell>
+            ) : filteredFees.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Payment Details</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredFees.map((fee) => (
+                    <TableRow key={fee.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{fee.studentName || "Unknown"}</p>
+                          <p className="text-sm text-gray-500">{fee.studentId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>₹{fee.amount}</TableCell>
+                      <TableCell>
+                        <div>
                           <div className="flex items-center">
-                            <Calendar className="mr-1 h-3 w-3 text-gray-500" />
+                            <CalendarClock className="mr-1 h-4 w-4 text-gray-500" />
                             <span>{new Date(fee.dueDate).toLocaleDateString()}</span>
                           </div>
-                        </TableCell>
-                        <TableCell>{getFeeStatusBadge(fee.status)}</TableCell>
-                        <TableCell>
-                          {fee.paymentDate 
-                            ? new Date(fee.paymentDate).toLocaleDateString()
-                            : '-'
-                          }
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {fee.transactionId || '-'}
-                        </TableCell>
-                        <TableCell>
-                          {fee.status === 'paid' ? (
-                            <Button variant="outline" size="sm" className="w-full">
-                              <Download className="h-3 w-3 mr-1" /> Receipt
-                            </Button>
-                          ) : fee.status === 'pending' ? (
-                            <div className="flex space-x-2">
+                          {fee.status === 'pending' && (
+                            <p className="text-xs mt-1">
+                              {getDaysDifference(fee.dueDate) > 0 ? (
+                                <span className="text-yellow-600">
+                                  Due in {getDaysDifference(fee.dueDate)} days
+                                </span>
+                              ) : (
+                                <span className="text-red-600">
+                                  Due today
+                                </span>
+                              )}
+                            </p>
+                          )}
+                          {fee.status === 'overdue' && (
+                            <p className="text-xs mt-1 text-red-600">
+                              Overdue by {Math.abs(getDaysDifference(fee.dueDate))} days
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getFeeStatusBadge(fee.status)}</TableCell>
+                      <TableCell>
+                        {fee.status === 'paid' ? (
+                          <div>
+                            <p className="text-xs">
+                              <span className="font-medium">Paid on:</span> {new Date(fee.paymentDate || '').toLocaleDateString()}
+                            </p>
+                            <p className="text-xs">
+                              <span className="font-medium">Transaction ID:</span> {fee.transactionId}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">Not paid yet</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {fee.status !== 'paid' && (
+                            <>
                               <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleMarkAsPaid(fee.id)}
+                                size="sm" 
+                                onClick={() => openMarkPaidDialog(fee)}
                               >
+                                <Check className="mr-1 h-4 w-4" />
                                 Mark Paid
                               </Button>
+                              
                               <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleMarkAsOverdue(fee.id)}
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleSendReminder(fee)}
                               >
-                                Mark Overdue
+                                Send Reminder
                               </Button>
-                            </div>
-                          ) : (
+                            </>
+                          )}
+                          {fee.status === 'paid' && (
                             <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleMarkAsPaid(fee.id)}
+                              size="sm" 
+                              variant="outline"
+                              disabled
                             >
-                              Mark Paid
+                              <Check className="mr-1 h-4 w-4" />
+                              Paid
                             </Button>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-end space-x-2 py-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <p className="text-sm text-gray-500">
-                      Page {currentPage} of {totalPages}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                      disabled={currentPage === totalPages}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             ) : (
-              <div className="flex flex-col items-center justify-center h-40">
-                <DollarSign className="h-10 w-10 text-gray-400 mb-2" />
+              <div className="flex flex-col items-center justify-center h-40 space-y-3">
+                <CreditCard className="h-10 w-10 text-gray-400" />
                 <p className="text-gray-500">No fee records found</p>
+                <Button onClick={() => setShowAddDialog(true)}>
+                  Create New Fee Record
+                </Button>
               </div>
             )}
           </CardContent>
@@ -763,98 +583,110 @@ const FeeManagement: React.FC = () => {
       </div>
 
       {/* Add Fee Dialog */}
-      <Dialog open={showAddFeeDialog} onOpenChange={setShowAddFeeDialog}>
-        <DialogContent>
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Add New Fee</DialogTitle>
+            <DialogTitle>Add Fee Record</DialogTitle>
             <DialogDescription>
               Create a new fee record for a student
             </DialogDescription>
           </DialogHeader>
-          
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="studentId">Student</Label>
-              <Select 
-                value={formData.studentId} 
-                onValueChange={(value) => handleSelectChange('studentId', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select student" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.map(student => (
-                    <SelectItem key={student.id} value={student.id}>
-                      {student.name} - {student.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="amount">Fee Amount (₹)</Label>
+              <Label htmlFor="student-id">Student ID</Label>
               <Input
-                id="amount"
-                name="amount"
-                type="number"
-                min="1"
-                value={formData.amount}
-                onChange={handleInputChange}
+                id="student-id"
+                placeholder="Enter student ID"
+                value={feeForm.studentId}
+                onChange={(e) => setFeeForm({ ...feeForm, studentId: e.target.value })}
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="dueDate">Due Date</Label>
+              <Label htmlFor="student-name">Student Name</Label>
               <Input
-                id="dueDate"
-                name="dueDate"
-                type="date"
-                value={formData.dueDate}
-                onChange={handleInputChange}
+                id="student-name"
+                placeholder="Enter student name"
+                value={feeForm.studentName}
+                onChange={(e) => setFeeForm({ ...feeForm, studentName: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (₹)</Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="Enter fee amount"
+                value={feeForm.amount}
+                onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Due Date</Label>
+              <DatePicker
+                date={feeForm.dueDate}
+                setDate={(date) => date && setFeeForm({ ...feeForm, dueDate: date })}
               />
             </div>
           </div>
-          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddFeeDialog(false)}>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleAddFee}>
-              Add Fee
+              Add Fee Record
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Send Reminder Dialog */}
-      <Dialog open={showSendReminderDialog} onOpenChange={setShowSendReminderDialog}>
-        <DialogContent>
+      {/* Mark Paid Dialog */}
+      <Dialog open={showMarkPaidDialog} onOpenChange={setShowMarkPaidDialog}>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Send Fee Reminders</DialogTitle>
+            <DialogTitle>Mark Fee as Paid</DialogTitle>
             <DialogDescription>
-              Send payment reminders to students with pending or overdue fees
+              Record payment details for this fee
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="py-4">
-            <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <AlertCircle className="h-5 w-5 text-blue-500" />
-              <div>
-                <h4 className="font-medium">Send Fee Reminders</h4>
-                <p className="text-sm text-gray-600">
-                  This will send notifications to {pendingFees + overdueFees} students with pending or overdue fees.
-                </p>
-              </div>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Fee Details</Label>
+              {selectedFee && (
+                <div className="p-4 border rounded-lg">
+                  <p><span className="font-medium">Student:</span> {selectedFee.studentName}</p>
+                  <p><span className="font-medium">Amount:</span> ₹{selectedFee.amount}</p>
+                  <p><span className="font-medium">Due Date:</span> {new Date(selectedFee.dueDate).toLocaleDateString()}</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="transaction-id">Transaction ID</Label>
+              <Input
+                id="transaction-id"
+                placeholder="Enter payment transaction ID"
+                value={paymentForm.transactionId}
+                onChange={(e) => setPaymentForm({ ...paymentForm, transactionId: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Payment Date</Label>
+              <DatePicker
+                date={paymentForm.paymentDate}
+                setDate={(date) => date && setPaymentForm({ ...paymentForm, paymentDate: date })}
+              />
             </div>
           </div>
-          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSendReminderDialog(false)}>
+            <Button variant="outline" onClick={() => setShowMarkPaidDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSendReminders}>
-              Send Reminders
+            <Button onClick={handleMarkPaid}>
+              Confirm Payment
             </Button>
           </DialogFooter>
         </DialogContent>

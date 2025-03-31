@@ -1,3 +1,4 @@
+
 // User types
 export interface User {
   id: string;
@@ -18,6 +19,7 @@ export interface Room {
   type: 'single' | 'double' | 'triple';
   amenities: string[];
   status: 'available' | 'occupied' | 'maintenance';
+  rentPerMonth?: number;
 }
 
 // Fee types
@@ -92,5 +94,5 @@ export interface FeeRecord {
 
 export interface RoomWithStudents extends Room {
   students: User[];
-  rentPerMonth?: number;
+  rentPerMonth: number;
 }
