@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -8,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Home, CreditCard, Clipboard, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ChatBot from '@/components/ChatBot';
 
 const StudentDashboard: React.FC = () => {
   const { userDetails } = useAuth();
@@ -20,7 +20,6 @@ const StudentDashboard: React.FC = () => {
     const fetchStudentData = async () => {
       if (userDetails?.id) {
         try {
-          // Fetch room information
           const studentDoc = await getDoc(doc(db, 'students', userDetails.id));
           if (studentDoc.exists() && studentDoc.data().roomId) {
             const roomDoc = await getDoc(doc(db, 'rooms', studentDoc.data().roomId));
@@ -29,7 +28,6 @@ const StudentDashboard: React.FC = () => {
             }
           }
 
-          // Fetch fee status
           const feeQuery = query(
             collection(db, 'fees'),
             where('studentId', '==', userDetails.id)
@@ -40,7 +38,6 @@ const StudentDashboard: React.FC = () => {
             setFeeStatus(feeData);
           }
 
-          // Fetch complaints
           const complaintQuery = query(
             collection(db, 'complaints'),
             where('studentId', '==', userDetails.id)
@@ -82,7 +79,6 @@ const StudentDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Room Information */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl flex items-center">
@@ -112,7 +108,6 @@ const StudentDashboard: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Fee Status */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl flex items-center">
@@ -145,7 +140,6 @@ const StudentDashboard: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Complaints */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl flex items-center">
@@ -187,7 +181,6 @@ const StudentDashboard: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Announcements */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl flex items-center">
@@ -205,7 +198,6 @@ const StudentDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Quick Links */}
           <Card>
             <CardHeader>
               <CardTitle>Quick Links</CardTitle>
@@ -243,7 +235,6 @@ const StudentDashboard: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Recent Activity */}
           <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
@@ -266,6 +257,8 @@ const StudentDashboard: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      <ChatBot />
     </DashboardLayout>
   );
 };

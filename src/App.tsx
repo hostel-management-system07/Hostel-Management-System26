@@ -12,10 +12,10 @@ import StudentDashboard from "./pages/StudentDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import RoomBooking from "./pages/RoomBooking";
 import NotFound from "./pages/NotFound";
+import ManageStudents from "./pages/ManageStudents";
 
 // Placeholder components for routes we'll implement later
 const ManageRooms = () => <div>Manage Rooms Page - Coming Soon</div>;
-const ManageStudents = () => <div>Manage Students Page - Coming Soon</div>;
 const Complaints = () => <div>Complaints Page - Coming Soon</div>;
 const FeeManagement = () => <div>Fee Management Page - Coming Soon</div>;
 const Announcements = () => <div>Announcements Page - Coming Soon</div>;
