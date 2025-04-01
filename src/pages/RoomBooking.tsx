@@ -11,7 +11,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Home, Check } from 'lucide-react';
+import { Home, Check, AlertTriangle } from 'lucide-react';
+import { addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface RoomType {
   id: string;
@@ -39,9 +40,9 @@ const RoomBooking: React.FC = () => {
   const { toast } = useToast();
 
   // Get unique blocks and floors from rooms
-  const blocks = [...new Set(rooms.map(room => room.block))];
-  const floors = [...new Set(rooms.map(room => room.floor))].sort((a, b) => a - b);
-  const roomTypes = [...new Set(rooms.map(room => room.type))];
+  const blocks = rooms.length > 0 ? [...new Set(rooms.map(room => room.block || ''))] : [];
+  const floors = rooms.length > 0 ? [...new Set(rooms.map(room => room.floor || 0))].sort((a, b) => a - b) : [];
+  const roomTypes = rooms.length > 0 ? [...new Set(rooms.map(room => room.type || 'single'))] : [];
 
   useEffect(() => {
     const fetchRooms = async () => {
@@ -69,6 +70,51 @@ const RoomBooking: React.FC = () => {
             }
           }
         }
+
+        // Create sample data if none exists
+        if (roomsList.length === 0) {
+          const sampleRooms: Partial<RoomType>[] = [
+            {
+              roomNumber: "101",
+              capacity: 2,
+              occupied: 0,
+              floor: 1,
+              block: "A",
+              type: "double",
+              amenities: ["Wi-Fi", "Attached Bathroom", "Study Table"],
+              status: "available"
+            },
+            {
+              roomNumber: "102",
+              capacity: 1,
+              occupied: 0,
+              floor: 1,
+              block: "A",
+              type: "single",
+              amenities: ["Wi-Fi", "Attached Bathroom", "Study Table", "AC"],
+              status: "available"
+            },
+            {
+              roomNumber: "201",
+              capacity: 3,
+              occupied: 0,
+              floor: 2,
+              block: "B",
+              type: "triple",
+              amenities: ["Wi-Fi", "Shared Bathroom", "Study Table", "Balcony"],
+              status: "available"
+            }
+          ];
+
+          for (const room of sampleRooms) {
+            await addDoc(collection(db, 'rooms'), room);
+          }
+
+          // Refetch after adding sample data
+          fetchRooms();
+          return;
+        }
+
       } catch (error) {
         console.error('Error fetching rooms:', error);
         toast({
@@ -103,6 +149,15 @@ const RoomBooking: React.FC = () => {
       return;
     }
 
+    if (!userDetails?.id) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to book a room",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setBooking(true);
     try {
       // Update room status in Firestore
@@ -111,12 +166,26 @@ const RoomBooking: React.FC = () => {
         occupied: 1,
       });
 
+      // Get room details for notification
+      const roomDoc = await getDoc(doc(db, 'rooms', selectedRoomId));
+      const roomData = roomDoc.data() as RoomType;
+
       // Update student document with room ID
       if (userDetails?.id) {
         await updateDoc(doc(db, 'students', userDetails.id), {
           roomId: selectedRoomId,
         });
       }
+
+      // Create notification for admin
+      await addDoc(collection(db, 'notifications'), {
+        title: "New Room Booking",
+        message: `${userDetails?.name || 'A student'} has booked room ${roomData?.roomNumber || 'unknown'}`,
+        type: "room-booking",
+        createdAt: serverTimestamp(),
+        read: false,
+        global: true
+      });
 
       // Find the booked room from the available rooms
       const bookedRoom = availableRooms.find(room => room.id === selectedRoomId);
@@ -139,6 +208,66 @@ const RoomBooking: React.FC = () => {
       });
     } finally {
       setBooking(false);
+    }
+  };
+
+  const handleRequestMaintenance = async () => {
+    if (!currentRoom) return;
+    
+    try {
+      await addDoc(collection(db, 'complaints'), {
+        studentId: userDetails?.id,
+        studentName: userDetails?.name,
+        roomNumber: currentRoom.roomNumber,
+        title: "Maintenance Request",
+        description: "Requesting general maintenance for my room.",
+        category: "maintenance",
+        priority: "medium",
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+      
+      toast({
+        title: "Success",
+        description: "Maintenance request submitted successfully!",
+      });
+    } catch (error) {
+      console.error('Error submitting maintenance request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit maintenance request.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRoomChangeRequest = async () => {
+    if (!currentRoom) return;
+    
+    try {
+      await addDoc(collection(db, 'complaints'), {
+        studentId: userDetails?.id,
+        studentName: userDetails?.name,
+        roomNumber: currentRoom.roomNumber,
+        title: "Room Change Request",
+        description: "I would like to request a room change.",
+        category: "room-change",
+        priority: "medium",
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+      
+      toast({
+        title: "Success",
+        description: "Room change request submitted successfully!",
+      });
+    } catch (error) {
+      console.error('Error submitting room change request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit room change request.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -174,7 +303,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Blocks" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_blocks">All Blocks</SelectItem>
+                        <SelectItem value="">All Blocks</SelectItem>
                         {blocks.map((block) => (
                           <SelectItem key={block} value={block}>{block ? `Block ${block}` : 'Unknown'}</SelectItem>
                         ))}
@@ -189,7 +318,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Floors" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_floors">All Floors</SelectItem>
+                        <SelectItem value="">All Floors</SelectItem>
                         {floors.map((floor) => (
                           <SelectItem key={floor} value={floor.toString()}>{floor ? `Floor ${floor}` : 'Unknown'}</SelectItem>
                         ))}
@@ -204,7 +333,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Types" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_types">All Types</SelectItem>
+                        <SelectItem value="">All Types</SelectItem>
                         {roomTypes.map((type) => (
                           <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
                         ))}
@@ -246,7 +375,7 @@ const RoomBooking: React.FC = () => {
                             </div>
                             <div>
                               <p className="text-sm"><span className="font-medium">Amenities:</span></p>
-                              <p className="text-sm text-gray-600">{room.amenities.join(', ')}</p>
+                              <p className="text-sm text-gray-600">{room.amenities ? room.amenities.join(', ') : 'None'}</p>
                             </div>
                           </div>
                         </div>
@@ -255,6 +384,7 @@ const RoomBooking: React.FC = () => {
                   </div>
                 ) : (
                   <div className="text-center py-8">
+                    <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-2" />
                     <p className="text-gray-500">No rooms available matching your filters.</p>
                     <Button 
                       variant="outline" 
@@ -328,17 +458,21 @@ const RoomBooking: React.FC = () => {
                       <h3 className="text-sm font-medium text-gray-500">Amenities</h3>
                       <div className="mt-2">
                         <ul className="list-disc pl-5 space-y-1">
-                          {currentRoom.amenities.map((amenity, index) => (
-                            <li key={index} className="text-gray-600">{amenity}</li>
-                          ))}
+                          {currentRoom.amenities && currentRoom.amenities.length > 0 ? (
+                            currentRoom.amenities.map((amenity, index) => (
+                              <li key={index} className="text-gray-600">{amenity}</li>
+                            ))
+                          ) : (
+                            <li className="text-gray-600">No amenities listed</li>
+                          )}
                         </ul>
                       </div>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter className="flex justify-between">
-                  <Button variant="outline">Request Maintenance</Button>
-                  <Button variant="destructive">Request Room Change</Button>
+                  <Button variant="outline" onClick={handleRequestMaintenance}>Request Maintenance</Button>
+                  <Button variant="destructive" onClick={handleRoomChangeRequest}>Request Room Change</Button>
                 </CardFooter>
               </Card>
             )}

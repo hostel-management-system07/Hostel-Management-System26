@@ -25,7 +25,7 @@ import {
   Megaphone, 
   Calendar, 
   Check, 
-  AlertCircle
+  AlertTriangle
 } from 'lucide-react';
 import { 
   Dialog, 
@@ -41,17 +41,27 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Announcement } from '@/types';
 
+interface AnnouncementType extends Announcement {
+  id: string;
+  title: string;
+  content: string;
+  createdBy: string;
+  important: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 const Announcements: React.FC = () => {
   const { userDetails } = useAuth();
   const { toast } = useToast();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [announcementToDelete, setAnnouncementToDelete] = useState<Announcement | null>(null);
-  const [announcementToEdit, setAnnouncementToEdit] = useState<Announcement | null>(null);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<AnnouncementType | null>(null);
+  const [announcementToEdit, setAnnouncementToEdit] = useState<AnnouncementType | null>(null);
 
   // Form state for adding/editing announcement
   const [formData, setFormData] = useState({
@@ -74,12 +84,18 @@ const Announcements: React.FC = () => {
       
       const querySnapshot = await getDocs(q);
       
-      const announcementsData: Announcement[] = [];
+      const announcementsData: AnnouncementType[] = [];
       querySnapshot.forEach((doc) => {
+        const data = doc.data();
         announcementsData.push({
           id: doc.id,
-          ...doc.data()
-        } as Announcement);
+          title: data.title || '',
+          content: data.content || '',
+          createdBy: data.createdBy || 'Admin',
+          important: data.important || false,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
+        });
       });
       
       // If no announcements found, create sample data
@@ -156,7 +172,7 @@ const Announcements: React.FC = () => {
     setShowAddDialog(true);
   };
 
-  const openEditDialog = (announcement: Announcement) => {
+  const openEditDialog = (announcement: AnnouncementType) => {
     setAnnouncementToEdit(announcement);
     setFormData({
       title: announcement.title,
@@ -166,7 +182,7 @@ const Announcements: React.FC = () => {
     setShowEditDialog(true);
   };
 
-  const openDeleteDialog = (announcement: Announcement) => {
+  const openDeleteDialog = (announcement: AnnouncementType) => {
     setAnnouncementToDelete(announcement);
     setShowDeleteDialog(true);
   };
@@ -204,9 +220,12 @@ const Announcements: React.FC = () => {
       
       const newAnnouncement = { 
         id: docRef.id, 
-        ...announcementData,
+        title: formData.title,
+        content: formData.content,
+        important: formData.important,
+        createdBy: userDetails?.name || 'Admin',
         createdAt: new Date().toISOString()
-      } as Announcement;
+      };
       
       setAnnouncements([newAnnouncement, ...announcements]);
       
@@ -253,7 +272,8 @@ const Announcements: React.FC = () => {
               ...announcement, 
               title: formData.title,
               content: formData.content,
-              important: formData.important
+              important: formData.important,
+              updatedAt: new Date().toISOString()
             }
           : announcement
       );
@@ -308,23 +328,33 @@ const Announcements: React.FC = () => {
   );
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={userDetails?.role === 'admin' ? 'admin' : undefined}>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Announcements</h1>
-            <p className="text-gray-500">Manage and publish hostel announcements</p>
+            <p className="text-gray-500">
+              {userDetails?.role === 'admin' 
+                ? 'Manage and publish hostel announcements' 
+                : 'View hostel announcements and updates'}
+            </p>
           </div>
-          <Button onClick={openAddDialog}>
-            <Megaphone className="mr-2 h-4 w-4" /> New Announcement
-          </Button>
+          {userDetails?.role === 'admin' && (
+            <Button onClick={openAddDialog}>
+              <Megaphone className="mr-2 h-4 w-4" /> New Announcement
+            </Button>
+          )}
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Publish Announcements</CardTitle>
+            <CardTitle>
+              {userDetails?.role === 'admin' ? 'Publish Announcements' : 'Hostel Announcements'}
+            </CardTitle>
             <CardDescription>
-              Keep students informed about hostel updates and events
+              {userDetails?.role === 'admin' 
+                ? 'Keep students informed about hostel updates and events'
+                : 'Stay updated with the latest hostel news and events'}
             </CardDescription>
             <div className="relative w-full md:w-64 mt-4">
               <Input
@@ -356,26 +386,28 @@ const Announcements: React.FC = () => {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle>{announcement.title}</CardTitle>
-                        <div className="flex space-x-1">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => openEditDialog(announcement)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => openDeleteDialog(announcement)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {userDetails?.role === 'admin' && (
+                          <div className="flex space-x-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => openEditDialog(announcement)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => openDeleteDialog(announcement)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       <CardDescription className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {new Date(announcement.createdAt).toLocaleDateString()}
+                        {announcement.createdAt ? new Date(announcement.createdAt).toLocaleDateString() : 'Unknown date'}
                         {" • "}
                         <span>{announcement.createdBy}</span>
                       </CardDescription>
@@ -390,13 +422,15 @@ const Announcements: React.FC = () => {
               <div className="flex flex-col items-center justify-center h-40">
                 <Bell className="h-10 w-10 text-gray-400 mb-2" />
                 <p className="text-gray-500">No announcements found</p>
-                <Button 
-                  variant="outline" 
-                  className="mt-4"
-                  onClick={openAddDialog}
-                >
-                  Create your first announcement
-                </Button>
+                {userDetails?.role === 'admin' && (
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={openAddDialog}
+                  >
+                    Create your first announcement
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -533,7 +567,7 @@ const Announcements: React.FC = () => {
           {announcementToDelete && (
             <div className="py-4">
               <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <AlertCircle className="h-5 w-5 text-gray-500" />
+                <AlertTriangle className="h-5 w-5 text-gray-500" />
                 <div>
                   <h4 className="font-medium">{announcementToDelete.title}</h4>
                   <p className="text-sm text-gray-600 line-clamp-1">

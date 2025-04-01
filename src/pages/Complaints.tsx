@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, query, where, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, where, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,16 +35,32 @@ import { Badge } from '@/components/ui/badge';
 import { Complaint } from '@/types';
 import { ClipboardCheck, Search, Clock, AlertTriangle, CheckCircle, Home } from 'lucide-react';
 
+interface ComplaintType extends Complaint {
+  id: string;
+  studentId?: string;
+  studentName?: string;
+  roomNumber?: string;
+  title?: string;
+  description?: string;
+  category?: string;
+  priority?: string;
+  status: 'pending' | 'in-progress' | 'resolved';
+  createdAt: string;
+  assignedTo?: string;
+  resolvedAt?: string;
+  resolution?: string;
+}
+
 const Complaints: React.FC = () => {
   const { toast } = useToast();
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [filteredComplaints, setFilteredComplaints] = useState<Complaint[]>([]);
+  const [complaints, setComplaints] = useState<ComplaintType[]>([]);
+  const [filteredComplaints, setFilteredComplaints] = useState<ComplaintType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
+  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintType | null>(null);
   const [assignForm, setAssignForm] = useState({ assignedTo: '' });
   const [resolveForm, setResolveForm] = useState({ resolution: '' });
 
@@ -55,10 +71,10 @@ const Complaints: React.FC = () => {
   useEffect(() => {
     const filtered = complaints.filter(complaint => {
       const matchesSearch = 
-        (complaint.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (complaint.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (complaint.roomNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (complaint.studentName?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+        ((complaint.title || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+        ((complaint.description || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+        ((complaint.roomNumber || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+        ((complaint.studentName || '').toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesStatus = statusFilter === 'all' || complaint.status === statusFilter;
       
@@ -73,18 +89,18 @@ const Complaints: React.FC = () => {
     try {
       const querySnapshot = await getDocs(collection(db, 'complaints'));
       
-      const complaintsData: Complaint[] = [];
+      const complaintsData: ComplaintType[] = [];
       
       for (const docSnapshot of querySnapshot.docs) {
-        const data = docSnapshot.data() as Complaint;
+        const complaintData = docSnapshot.data() as Partial<ComplaintType>;
         
         // If student name is missing, fetch it
-        if (!data.studentName && data.studentId) {
+        if (!complaintData.studentName && complaintData.studentId) {
           try {
-            const studentDoc = await getDoc(doc(db, 'users', data.studentId));
+            const studentDoc = await getDoc(doc(db, 'users', complaintData.studentId));
             if (studentDoc.exists()) {
               const studentData = studentDoc.data();
-              data.studentName = studentData.name;
+              complaintData.studentName = studentData.name;
             }
           } catch (error) {
             console.error("Error fetching student name:", error);
@@ -93,15 +109,16 @@ const Complaints: React.FC = () => {
         
         complaintsData.push({
           id: docSnapshot.id,
-          ...data
-        } as Complaint);
+          status: complaintData.status || 'pending',
+          createdAt: complaintData.createdAt || new Date().toISOString(),
+          ...complaintData
+        } as ComplaintType);
       }
       
       // Create sample data if none exists
       if (complaintsData.length === 0) {
-        const sampleComplaints: Complaint[] = [
+        const sampleComplaints: Partial<ComplaintType>[] = [
           {
-            id: "sample1",
             studentId: "student1",
             studentName: "John Doe",
             roomNumber: "101",
@@ -113,7 +130,6 @@ const Complaints: React.FC = () => {
             createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           },
           {
-            id: "sample2",
             studentId: "student2",
             studentName: "Jane Smith",
             roomNumber: "205",
@@ -126,7 +142,6 @@ const Complaints: React.FC = () => {
             assignedTo: "Maintenance Team",
           },
           {
-            id: "sample3",
             studentId: "student3",
             studentName: "Mike Johnson",
             roomNumber: "310",
@@ -141,10 +156,12 @@ const Complaints: React.FC = () => {
           }
         ];
         
-        setComplaints(sampleComplaints);
-        setFilteredComplaints(sampleComplaints);
-        setLoading(false);
-        return;
+        for (const complaint of sampleComplaints) {
+          await addDoc(collection(db, 'complaints'), complaint);
+        }
+        
+        // Re-fetch to get the sample data with IDs
+        return fetchComplaints();
       }
       
       // Sort by createdAt date (newest first)
@@ -175,6 +192,18 @@ const Complaints: React.FC = () => {
         assignedTo: assignForm.assignedTo
       });
       
+      // Create notification for student
+      if (selectedComplaint.studentId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: selectedComplaint.studentId,
+          title: "Complaint Update",
+          message: `Your complaint "${selectedComplaint.title}" has been assigned to ${assignForm.assignedTo}`,
+          type: "complaint",
+          createdAt: serverTimestamp(),
+          read: false
+        });
+      }
+      
       // Update state
       const updatedComplaints = complaints.map(complaint => 
         complaint.id === selectedComplaint.id
@@ -184,7 +213,7 @@ const Complaints: React.FC = () => {
               assignedTo: assignForm.assignedTo 
             }
           : complaint
-      ) as Complaint[];
+      ) as ComplaintType[];
       
       setComplaints(updatedComplaints);
       
@@ -215,6 +244,18 @@ const Complaints: React.FC = () => {
         resolvedAt: new Date().toISOString()
       });
       
+      // Create notification for student
+      if (selectedComplaint.studentId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: selectedComplaint.studentId,
+          title: "Complaint Resolved",
+          message: `Your complaint "${selectedComplaint.title}" has been resolved: ${resolveForm.resolution.substring(0, 50)}${resolveForm.resolution.length > 50 ? '...' : ''}`,
+          type: "complaint",
+          createdAt: serverTimestamp(),
+          read: false
+        });
+      }
+      
       // Update state
       const updatedComplaints = complaints.map(complaint => 
         complaint.id === selectedComplaint.id
@@ -225,7 +266,7 @@ const Complaints: React.FC = () => {
               resolvedAt: new Date().toISOString()
             }
           : complaint
-      ) as Complaint[];
+      ) as ComplaintType[];
       
       setComplaints(updatedComplaints);
       
@@ -246,13 +287,13 @@ const Complaints: React.FC = () => {
     }
   };
 
-  const openAssignDialog = (complaint: Complaint) => {
+  const openAssignDialog = (complaint: ComplaintType) => {
     setSelectedComplaint(complaint);
     setAssignForm({ assignedTo: complaint.assignedTo || '' });
     setShowAssignDialog(true);
   };
 
-  const openResolveDialog = (complaint: Complaint) => {
+  const openResolveDialog = (complaint: ComplaintType) => {
     setSelectedComplaint(complaint);
     setResolveForm({ resolution: complaint.resolution || '' });
     setShowResolveDialog(true);
@@ -271,7 +312,7 @@ const Complaints: React.FC = () => {
     }
   };
 
-  const getPriorityBadge = (priority: string) => {
+  const getPriorityBadge = (priority: string | undefined) => {
     switch (priority) {
       case 'high':
         return <Badge className="bg-red-500 hover:bg-red-600">High</Badge>;
@@ -352,13 +393,13 @@ const Complaints: React.FC = () => {
                   {filteredComplaints.map((complaint) => (
                     <TableRow key={complaint.id}>
                       <TableCell className="font-medium">#{complaint.id.substring(0, 6)}</TableCell>
-                      <TableCell>{complaint.roomNumber}</TableCell>
+                      <TableCell>{complaint.roomNumber || 'N/A'}</TableCell>
                       <TableCell>{complaint.studentName || 'Unknown'}</TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{complaint.title}</p>
+                          <p className="font-medium">{complaint.title || 'No Title'}</p>
                           <p className="text-sm text-gray-500 truncate max-w-xs">
-                            {complaint.description}
+                            {complaint.description || 'No description provided'}
                           </p>
                         </div>
                       </TableCell>
