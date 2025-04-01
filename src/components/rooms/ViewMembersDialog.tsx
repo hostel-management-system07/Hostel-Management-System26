@@ -24,9 +24,11 @@ const ViewMembersDialog: React.FC<ViewMembersDialogProps> = ({
   onOpenChange, 
   selectedRoom
 }) => {
+  console.log("Selected room in ViewMembers:", selectedRoom);
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Room Members</DialogTitle>
           <DialogDescription>
@@ -60,21 +62,21 @@ const ViewMembersDialog: React.FC<ViewMembersDialogProps> = ({
               </div>
               
               <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Students ({selectedRoom?.studentDetails?.length || 0})</h3>
+                <h3 className="font-medium mb-2">Students ({selectedRoom.studentDetails?.length || 0})</h3>
                 
-                {selectedRoom?.studentDetails && selectedRoom?.studentDetails?.length > 0 ? (
+                {selectedRoom.studentDetails && selectedRoom.studentDetails.length > 0 ? (
                   <div className="space-y-2">
-                    {selectedRoom.studentDetails?.map((student, index) => (
-                      <div key={index} className="bg-gray-50 border rounded p-3">
+                    {selectedRoom.studentDetails.map((student, index) => (
+                      <div key={student.id || index} className="bg-gray-50 border rounded p-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-medium">{student.name}</h4>
-                            <p className="text-xs text-gray-500">{student.registrationNumber || 'No ID'}</p>
+                            <h4 className="font-medium">{student.name || "Unknown Student"}</h4>
+                            <p className="text-xs text-gray-500">{student.registrationNumber || "No Registration Number"}</p>
                           </div>
                           <Badge variant="outline">{student.year ? `Year ${student.year}` : 'No Year'}</Badge>
                         </div>
                         <div className="mt-2 text-sm">
-                          <p><span className="text-gray-500">Email:</span> {student.email}</p>
+                          <p><span className="text-gray-500">Email:</span> {student.email || "No Email"}</p>
                           {student.department && (
                             <p><span className="text-gray-500">Department:</span> {student.department}</p>
                           )}

@@ -1,13 +1,5 @@
 
-interface Student {
-  id: string;
-  name: string;
-  email: string;
-  roomId?: string;
-  registrationNumber?: string;
-  department?: string;
-  year?: string;
-}
+import { Student } from './student';
 
 export interface RoomType {
   id: string;
