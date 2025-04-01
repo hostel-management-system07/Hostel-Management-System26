@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, Clipboard, CreditCard, Bell, Settings, User, LogOut } from 'lucide-react';
+import { Home, Users, Clipboard, CreditCard, Bell, Settings, User, LogOut, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
@@ -22,8 +22,9 @@ const Sidebar: React.FC = () => {
 
   const adminNavItems = [
     { name: 'Dashboard', href: '/admin-dashboard', icon: Home },
-    { name: 'Manage Rooms', href: '/manage-rooms', icon: Users },
+    { name: 'Manage Rooms', href: '/manage-rooms', icon: Home },
     { name: 'Manage Students', href: '/manage-students', icon: Users },
+    { name: 'Manage Admins', href: '/manage-admins', icon: Shield },
     { name: 'Complaints', href: '/complaints', icon: Clipboard },
     { name: 'Fee Management', href: '/fee-management', icon: CreditCard },
     { name: 'Announcements', href: '/announcements', icon: Bell },

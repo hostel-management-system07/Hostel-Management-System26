@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, query, where, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useToast } from '@/hooks/use-toast';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -25,6 +25,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/context/AuthContext';
+import { createUserNotification } from '@/utils/notificationUtils';
 
 interface Student {
   id: string;
@@ -39,14 +42,35 @@ interface Student {
   status: 'active' | 'inactive';
 }
 
+interface Room {
+  id: string;
+  roomNumber: string;
+  capacity: number;
+  occupied: number;
+  floor: number;
+  block: string;
+  type: string;
+  status: 'available' | 'occupied' | 'maintenance';
+}
+
 const ManageStudents: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
+  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showRoomAssignDialog, setShowRoomAssignDialog] = useState(false);
+  const [bulkAssignDialogOpen, setBulkAssignDialogOpen] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState<string>('');
+  const [studentToAssign, setStudentToAssign] = useState<Student | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
   const { toast } = useToast();
+  const { userDetails } = useAuth();
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -63,11 +87,9 @@ const ManageStudents: React.FC = () => {
           let roomNumber = '';
           if (userData.roomId) {
             try {
-              const roomDoc = await getDocs(
-                query(collection(db, 'rooms'), where('id', '==', userData.roomId))
-              );
-              if (!roomDoc.empty) {
-                roomNumber = roomDoc.docs[0].data().roomNumber;
+              const roomDoc = await getDoc(doc(db, 'rooms', userData.roomId));
+              if (roomDoc.exists()) {
+                roomNumber = roomDoc.data().roomNumber;
               }
             } catch (error) {
               console.error("Error fetching room data:", error);
@@ -102,7 +124,25 @@ const ManageStudents: React.FC = () => {
       }
     };
 
+    // Fetch available rooms
+    const fetchRooms = async () => {
+      try {
+        const q = query(collection(db, 'rooms'), where('status', '==', 'available'));
+        const snapshot = await getDocs(q);
+        
+        const roomsData: Room[] = [];
+        snapshot.forEach((doc) => {
+          roomsData.push({ id: doc.id, ...doc.data() } as Room);
+        });
+        
+        setAvailableRooms(roomsData);
+      } catch (error) {
+        console.error("Error fetching rooms:", error);
+      }
+    };
+
     fetchStudents();
+    fetchRooms();
   }, [toast]);
 
   useEffect(() => {
@@ -123,8 +163,16 @@ const ManageStudents: React.FC = () => {
       
       // If student has a room, update the room occupancy
       if (studentToDelete.roomId) {
-        // Here you would update the room status
-        // This would depend on your room structure
+        const roomRef = doc(db, 'rooms', studentToDelete.roomId);
+        const roomDoc = await getDoc(roomRef);
+        
+        if (roomDoc.exists()) {
+          const roomData = roomDoc.data();
+          await updateDoc(roomRef, {
+            occupied: Math.max(0, (roomData.occupied || 1) - 1),
+            status: roomData.occupied <= 1 ? 'available' : 'occupied'
+          });
+        }
       }
       
       // Update the UI
@@ -151,6 +199,170 @@ const ManageStudents: React.FC = () => {
   const openDeleteDialog = (student: Student) => {
     setStudentToDelete(student);
     setShowDeleteDialog(true);
+  };
+
+  const openRoomAssignDialog = (student: Student) => {
+    setStudentToAssign(student);
+    setShowRoomAssignDialog(true);
+  };
+
+  const handleAssignRoom = async () => {
+    if (!studentToAssign || !selectedRoom) return;
+    
+    try {
+      // Get room data
+      const roomRef = doc(db, 'rooms', selectedRoom);
+      const roomDoc = await getDoc(roomRef);
+      
+      if (!roomDoc.exists()) {
+        throw new Error('Room not found');
+      }
+      
+      const roomData = roomDoc.data();
+      
+      // Check if room is at capacity
+      if (roomData.occupied >= roomData.capacity) {
+        toast({
+          title: "Error",
+          description: "This room is already at full capacity",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // If student already has a room, update old room first
+      if (studentToAssign.roomId) {
+        const oldRoomRef = doc(db, 'rooms', studentToAssign.roomId);
+        const oldRoomDoc = await getDoc(oldRoomRef);
+        
+        if (oldRoomDoc.exists()) {
+          const oldRoomData = oldRoomDoc.data();
+          await updateDoc(oldRoomRef, {
+            occupied: Math.max(0, (oldRoomData.occupied || 1) - 1),
+            status: oldRoomData.occupied <= 1 ? 'available' : 'occupied'
+          });
+        }
+      }
+      
+      // Update room occupancy
+      await updateDoc(roomRef, {
+        occupied: (roomData.occupied || 0) + 1,
+        status: 'occupied'
+      });
+      
+      // Update student's room assignment
+      await updateDoc(doc(db, 'users', studentToAssign.id), {
+        roomId: selectedRoom
+      });
+      
+      // Send notification to student
+      await createUserNotification(studentToAssign.id, {
+        title: "Room Assignment",
+        message: `You have been assigned to room ${roomData.roomNumber}`,
+        type: "room",
+      });
+      
+      // Update local state
+      const updatedStudents = students.map(student => 
+        student.id === studentToAssign.id 
+          ? { ...student, roomId: selectedRoom, roomNumber: roomData.roomNumber }
+          : student
+      );
+      
+      setStudents(updatedStudents);
+      setFilteredStudents(updatedStudents.filter(student =>
+        student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (student.roomNumber && student.roomNumber.includes(searchTerm))
+      ));
+      
+      toast({
+        title: "Success",
+        description: `${studentToAssign.name} has been assigned to room ${roomData.roomNumber}`,
+      });
+      
+      // Close dialog and reset state
+      setShowRoomAssignDialog(false);
+      setSelectedRoom('');
+      setStudentToAssign(null);
+      
+    } catch (error) {
+      console.error("Error assigning room:", error);
+      toast({
+        title: "Error",
+        description: "Failed to assign room to student",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkRoomAssignment = async () => {
+    toast({
+      title: "Feature in Progress",
+      description: "Bulk room assignment feature is coming soon",
+    });
+    setBulkAssignDialogOpen(false);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailSubject || !emailBody) {
+      toast({
+        title: "Error",
+        description: "Please provide both subject and message",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setSendingEmail(true);
+    try {
+      // Create notifications for all students
+      for (const student of students) {
+        await createUserNotification(student.id, {
+          title: emailSubject,
+          message: emailBody,
+          type: "announcement",
+        });
+      }
+      
+      // Add an announcement that will appear in the announcements section
+      await updateDoc(doc(db, 'announcements', 'latest'), {
+        title: emailSubject,
+        content: emailBody,
+        createdBy: userDetails?.name || 'Admin',
+        createdAt: new Date().toISOString(),
+        important: emailSubject.toLowerCase().includes('urgent') || emailSubject.toLowerCase().includes('important'),
+      }).catch(() => {
+        // If document doesn't exist, create it
+        const announcementsCollection = collection(db, 'announcements');
+        return addDoc(announcementsCollection, {
+          title: emailSubject,
+          content: emailBody,
+          createdBy: userDetails?.name || 'Admin',
+          createdAt: new Date().toISOString(),
+          important: emailSubject.toLowerCase().includes('urgent') || emailSubject.toLowerCase().includes('important'),
+        });
+      });
+      
+      toast({
+        title: "Success",
+        description: `Message sent to ${students.length} students`,
+      });
+      
+      // Reset form and close dialog
+      setEmailSubject('');
+      setEmailBody('');
+      setEmailDialogOpen(false);
+    } catch (error) {
+      console.error("Error sending email:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send message to students",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const renderStudentTable = () => (
@@ -190,13 +402,22 @@ const ManageStudents: React.FC = () => {
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  onClick={() => openDeleteDialog(student)}
-                >
-                  <UserX className="h-4 w-4 mr-1" /> Remove
-                </Button>
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => openRoomAssignDialog(student)}
+                  >
+                    <Home className="h-4 w-4 mr-1" /> Assign Room
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => openDeleteDialog(student)}
+                  >
+                    <UserX className="h-4 w-4 mr-1" /> Remove
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))
@@ -284,7 +505,7 @@ const ManageStudents: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Button className="w-full mb-2">
+              <Button className="w-full mb-2" onClick={() => setEmailDialogOpen(true)}>
                 Send Mass Email
               </Button>
               <Button variant="outline" className="w-full">
@@ -301,7 +522,7 @@ const ManageStudents: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Button className="w-full mb-2">
+              <Button className="w-full mb-2" onClick={() => setBulkAssignDialogOpen(true)}>
                 Bulk Room Assignment
               </Button>
               <Button variant="outline" className="w-full">
@@ -312,6 +533,7 @@ const ManageStudents: React.FC = () => {
         </div>
       </div>
 
+      {/* Delete Student Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
@@ -331,6 +553,144 @@ const ManageStudents: React.FC = () => {
             </Button>
             <Button variant="destructive" onClick={handleDeleteStudent}>
               Remove Student
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Room Assignment Dialog */}
+      <Dialog open={showRoomAssignDialog} onOpenChange={setShowRoomAssignDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Room to {studentToAssign?.name}</DialogTitle>
+            <DialogDescription>
+              Select a room to assign to this student.
+              {studentToAssign?.roomId && (
+                <p className="mt-2 text-amber-600">
+                  Note: This student is currently assigned to Room {studentToAssign?.roomNumber}.
+                  Assigning a new room will update their assignment.
+                </p>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="room-select">Available Rooms</Label>
+                <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                  <SelectTrigger id="room-select">
+                    <SelectValue placeholder="Select a room" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRooms.map((room) => (
+                      <SelectItem key={room.id} value={room.id}>
+                        Room {room.roomNumber} - Block {room.block}, Floor {room.floor} ({room.type})
+                      </SelectItem>
+                    ))}
+                    {availableRooms.length === 0 && (
+                      <SelectItem value="no-rooms" disabled>No available rooms</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRoomAssignDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="default" 
+              onClick={handleAssignRoom} 
+              disabled={!selectedRoom || selectedRoom === 'no-rooms'}
+            >
+              Assign Room
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Room Assignment Dialog */}
+      <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk Room Assignment</DialogTitle>
+            <DialogDescription>
+              Automatically assign rooms to students without room assignments.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">
+                {students.filter(s => !s.roomId).length} students without room assignments.
+              </p>
+              <p className="text-sm text-gray-500">
+                {availableRooms.length} available rooms.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAssignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="default" 
+              onClick={handleBulkRoomAssignment}
+              disabled={availableRooms.length === 0 || students.filter(s => !s.roomId).length === 0}
+            >
+              Assign Rooms
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mass Email Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Send Message to All Students</DialogTitle>
+            <DialogDescription>
+              Compose a message to be sent to all {students.length} students.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input
+                id="email-subject"
+                placeholder="Enter subject..."
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email-body">Message</Label>
+              <textarea
+                id="email-body"
+                placeholder="Enter your message..."
+                rows={5}
+                className="min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="default" 
+              onClick={handleSendEmail}
+              disabled={sendingEmail || !emailSubject || !emailBody}
+            >
+              {sendingEmail ? 'Sending...' : 'Send Message'}
             </Button>
           </DialogFooter>
         </DialogContent>

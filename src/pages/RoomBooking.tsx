@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/context/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Home, Check, AlertTriangle } from 'lucide-react';
-import { addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface RoomType {
   id: string;
@@ -61,13 +60,29 @@ const RoomBooking: React.FC = () => {
         
         // Check if student already has a room
         if (userDetails?.id) {
-          const studentDoc = await getDoc(doc(db, 'students', userDetails.id));
-          if (studentDoc.exists() && studentDoc.data().roomId) {
-            const roomId = studentDoc.data().roomId;
-            const roomDoc = await getDoc(doc(db, 'rooms', roomId));
-            if (roomDoc.exists()) {
-              setCurrentRoom(roomDoc.data() as RoomType);
+          try {
+            // First check in students collection
+            const studentDoc = await getDoc(doc(db, 'students', userDetails.id));
+            
+            if (studentDoc.exists() && studentDoc.data().roomId) {
+              const roomId = studentDoc.data().roomId;
+              const roomDoc = await getDoc(doc(db, 'rooms', roomId));
+              if (roomDoc.exists()) {
+                setCurrentRoom(roomDoc.data() as RoomType);
+              }
+            } else {
+              // If not found in students, check in users collection
+              const userDoc = await getDoc(doc(db, 'users', userDetails.id));
+              if (userDoc.exists() && userDoc.data().roomId) {
+                const roomId = userDoc.data().roomId;
+                const roomDoc = await getDoc(doc(db, 'rooms', roomId));
+                if (roomDoc.exists()) {
+                  setCurrentRoom(roomDoc.data() as RoomType);
+                }
+              }
             }
+          } catch (error) {
+            console.error("Error fetching student data:", error);
           }
         }
 
@@ -170,9 +185,22 @@ const RoomBooking: React.FC = () => {
       const roomDoc = await getDoc(doc(db, 'rooms', selectedRoomId));
       const roomData = roomDoc.data() as RoomType;
 
-      // Update student document with room ID
-      if (userDetails?.id) {
-        await updateDoc(doc(db, 'students', userDetails.id), {
+      // Update student document with room ID - try both collections
+      try {
+        const studentDocRef = doc(db, 'students', userDetails.id);
+        const studentDoc = await getDoc(studentDocRef);
+        
+        if (studentDoc.exists()) {
+          await updateDoc(studentDocRef, { roomId: selectedRoomId });
+        } else {
+          // If student doc doesn't exist, update user document
+          await updateDoc(doc(db, 'users', userDetails.id), {
+            roomId: selectedRoomId,
+          });
+        }
+      } catch (e) {
+        // If updating student doc fails, try user doc directly
+        await updateDoc(doc(db, 'users', userDetails.id), {
           roomId: selectedRoomId,
         });
       }
@@ -224,7 +252,7 @@ const RoomBooking: React.FC = () => {
         category: "maintenance",
         priority: "medium",
         status: "pending",
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
       });
       
       toast({
@@ -254,7 +282,7 @@ const RoomBooking: React.FC = () => {
         category: "room-change",
         priority: "medium",
         status: "pending",
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
       });
       
       toast({
@@ -303,7 +331,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Blocks" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All Blocks</SelectItem>
+                        <SelectItem value="all">All Blocks</SelectItem>
                         {blocks.map((block) => (
                           <SelectItem key={block} value={block}>{block ? `Block ${block}` : 'Unknown'}</SelectItem>
                         ))}
@@ -318,9 +346,9 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Floors" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All Floors</SelectItem>
+                        <SelectItem value="all">All Floors</SelectItem>
                         {floors.map((floor) => (
-                          <SelectItem key={floor} value={floor.toString()}>{floor ? `Floor ${floor}` : 'Unknown'}</SelectItem>
+                          <SelectItem key={floor.toString()} value={floor.toString()}>{floor ? `Floor ${floor}` : 'Unknown'}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -333,7 +361,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Types" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All Types</SelectItem>
+                        <SelectItem value="all">All Types</SelectItem>
                         {roomTypes.map((type) => (
                           <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
                         ))}
@@ -470,7 +498,7 @@ const RoomBooking: React.FC = () => {
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
+                <CardFooter className="flex flex-col md:flex-row gap-3">
                   <Button variant="outline" onClick={handleRequestMaintenance}>Request Maintenance</Button>
                   <Button variant="destructive" onClick={handleRoomChangeRequest}>Request Room Change</Button>
                 </CardFooter>

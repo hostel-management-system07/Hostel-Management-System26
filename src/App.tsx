@@ -13,6 +13,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import RoomBooking from "./pages/RoomBooking";
 import NotFound from "./pages/NotFound";
 import ManageStudents from "./pages/ManageStudents";
+import ManageAdmins from "./pages/ManageAdmins";
 import ManageRooms from "./pages/ManageRooms";
 import Complaints from "./pages/Complaints";
 import FeeManagement from "./pages/FeeManagement";
@@ -50,6 +51,7 @@ const App = () => (
             {/* Admin routes */}
             <Route path="/manage-rooms" element={<ManageRooms />} />
             <Route path="/manage-students" element={<ManageStudents />} />
+            <Route path="/manage-admins" element={<ManageAdmins />} />
             <Route path="/complaints" element={<Complaints />} />
             <Route path="/fee-management" element={<FeeManagement />} />
             <Route path="/announcements" element={<Announcements />} />
