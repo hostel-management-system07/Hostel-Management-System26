@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, deleteDoc, query, where, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, query, where, updateDoc, getDoc, addDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useToast } from '@/hooks/use-toast';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -28,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/context/AuthContext';
 import { createUserNotification } from '@/utils/notificationUtils';
+import { Label } from '@/components/ui/label';
 
 interface Student {
   id: string;
@@ -83,7 +83,6 @@ const ManageStudents: React.FC = () => {
         for (const userDoc of snapshot.docs) {
           const userData = userDoc.data();
           
-          // Get the student's room information if available
           let roomNumber = '';
           if (userData.roomId) {
             try {
@@ -124,7 +123,6 @@ const ManageStudents: React.FC = () => {
       }
     };
 
-    // Fetch available rooms
     const fetchRooms = async () => {
       try {
         const q = query(collection(db, 'rooms'), where('status', '==', 'available'));
@@ -158,10 +156,8 @@ const ManageStudents: React.FC = () => {
     if (!studentToDelete) return;
     
     try {
-      // Delete from users collection
       await deleteDoc(doc(db, 'users', studentToDelete.id));
       
-      // If student has a room, update the room occupancy
       if (studentToDelete.roomId) {
         const roomRef = doc(db, 'rooms', studentToDelete.roomId);
         const roomDoc = await getDoc(roomRef);
@@ -175,7 +171,6 @@ const ManageStudents: React.FC = () => {
         }
       }
       
-      // Update the UI
       setStudents(students.filter(s => s.id !== studentToDelete.id));
       setFilteredStudents(filteredStudents.filter(s => s.id !== studentToDelete.id));
       
@@ -210,7 +205,6 @@ const ManageStudents: React.FC = () => {
     if (!studentToAssign || !selectedRoom) return;
     
     try {
-      // Get room data
       const roomRef = doc(db, 'rooms', selectedRoom);
       const roomDoc = await getDoc(roomRef);
       
@@ -220,7 +214,6 @@ const ManageStudents: React.FC = () => {
       
       const roomData = roomDoc.data();
       
-      // Check if room is at capacity
       if (roomData.occupied >= roomData.capacity) {
         toast({
           title: "Error",
@@ -230,7 +223,6 @@ const ManageStudents: React.FC = () => {
         return;
       }
       
-      // If student already has a room, update old room first
       if (studentToAssign.roomId) {
         const oldRoomRef = doc(db, 'rooms', studentToAssign.roomId);
         const oldRoomDoc = await getDoc(oldRoomRef);
@@ -244,25 +236,21 @@ const ManageStudents: React.FC = () => {
         }
       }
       
-      // Update room occupancy
       await updateDoc(roomRef, {
         occupied: (roomData.occupied || 0) + 1,
         status: 'occupied'
       });
       
-      // Update student's room assignment
       await updateDoc(doc(db, 'users', studentToAssign.id), {
         roomId: selectedRoom
       });
       
-      // Send notification to student
       await createUserNotification(studentToAssign.id, {
         title: "Room Assignment",
         message: `You have been assigned to room ${roomData.roomNumber}`,
         type: "room",
       });
       
-      // Update local state
       const updatedStudents = students.map(student => 
         student.id === studentToAssign.id 
           ? { ...student, roomId: selectedRoom, roomNumber: roomData.roomNumber }
@@ -281,11 +269,9 @@ const ManageStudents: React.FC = () => {
         description: `${studentToAssign.name} has been assigned to room ${roomData.roomNumber}`,
       });
       
-      // Close dialog and reset state
       setShowRoomAssignDialog(false);
       setSelectedRoom('');
       setStudentToAssign(null);
-      
     } catch (error) {
       console.error("Error assigning room:", error);
       toast({
@@ -316,7 +302,6 @@ const ManageStudents: React.FC = () => {
     
     setSendingEmail(true);
     try {
-      // Create notifications for all students
       for (const student of students) {
         await createUserNotification(student.id, {
           title: emailSubject,
@@ -325,7 +310,6 @@ const ManageStudents: React.FC = () => {
         });
       }
       
-      // Add an announcement that will appear in the announcements section
       await updateDoc(doc(db, 'announcements', 'latest'), {
         title: emailSubject,
         content: emailBody,
@@ -333,7 +317,6 @@ const ManageStudents: React.FC = () => {
         createdAt: new Date().toISOString(),
         important: emailSubject.toLowerCase().includes('urgent') || emailSubject.toLowerCase().includes('important'),
       }).catch(() => {
-        // If document doesn't exist, create it
         const announcementsCollection = collection(db, 'announcements');
         return addDoc(announcementsCollection, {
           title: emailSubject,
@@ -349,7 +332,6 @@ const ManageStudents: React.FC = () => {
         description: `Message sent to ${students.length} students`,
       });
       
-      // Reset form and close dialog
       setEmailSubject('');
       setEmailBody('');
       setEmailDialogOpen(false);
@@ -533,7 +515,6 @@ const ManageStudents: React.FC = () => {
         </div>
       </div>
 
-      {/* Delete Student Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
@@ -558,7 +539,6 @@ const ManageStudents: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Room Assignment Dialog */}
       <Dialog open={showRoomAssignDialog} onOpenChange={setShowRoomAssignDialog}>
         <DialogContent>
           <DialogHeader>
@@ -612,7 +592,6 @@ const ManageStudents: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Bulk Room Assignment Dialog */}
       <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -648,7 +627,6 @@ const ManageStudents: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Mass Email Dialog */}
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
