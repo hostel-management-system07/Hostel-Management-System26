@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -48,6 +47,7 @@ import {
   Users, 
   Trash, 
   Check,
+  AlertTriangle
 } from 'lucide-react';
 import { Room, RoomWithStudents, User } from '@/types';
 
@@ -91,9 +91,8 @@ const ManageRooms: React.FC = () => {
     rentPerMonth: '5000'
   });
   
-  // Get unique blocks and floors from rooms
   const blocks = [...new Set(rooms.map(room => room.block))].sort();
-  const floors = [...new Set(rooms.map(room => room.floor))].sort((a, b) => a - b);
+  const floors = [...new Set(rooms.filter(room => room.floor !== undefined).map(room => room.floor))].sort((a, b) => a - b);
 
   useEffect(() => {
     fetchRooms();
@@ -106,7 +105,6 @@ const ManageRooms: React.FC = () => {
   const filterRooms = () => {
     let filtered = [...rooms];
     
-    // Apply filters
     if (searchTerm) {
       filtered = filtered.filter(room => 
         room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase())
@@ -134,7 +132,6 @@ const ManageRooms: React.FC = () => {
       const querySnapshot = await getDocs(collection(db, 'rooms'));
       
       if (querySnapshot.empty) {
-        // Create sample data if no rooms exist
         const sampleRooms = generateSampleRooms();
         setRooms(sampleRooms);
         setFilteredRooms(sampleRooms);
@@ -148,11 +145,10 @@ const ManageRooms: React.FC = () => {
         roomsData.push({
           id: doc.id,
           ...doc.data(),
-          students: [] // Initialize students array
+          students: []
         } as RoomWithStudents);
       });
       
-      // Sort by room number
       roomsData.sort((a, b) => a.roomNumber.localeCompare(b.roomNumber));
       
       setRooms(roomsData);
@@ -172,7 +168,6 @@ const ManageRooms: React.FC = () => {
   const generateSampleRooms = () => {
     const sampleRooms: RoomWithStudents[] = [];
     
-    // Generate sample rooms for each block and floor
     const blocks = ['A', 'B', 'C'];
     const floors = [1, 2, 3];
     const types = ['single', 'double', 'triple'] as const;
@@ -180,7 +175,6 @@ const ManageRooms: React.FC = () => {
     
     blocks.forEach(block => {
       floors.forEach(floor => {
-        // Generate a few rooms for each block and floor
         for (let i = 1; i <= 3; i++) {
           roomCount++;
           const roomNumber = `${block}${floor}0${i}`;
@@ -240,7 +234,6 @@ const ManageRooms: React.FC = () => {
         description: `Room ${roomForm.roomNumber} added successfully`,
       });
       
-      // Reset form
       setRoomForm({
         roomNumber: '',
         capacity: '1',
@@ -339,7 +332,6 @@ const ManageRooms: React.FC = () => {
           status: 'maintenance'
         });
         
-        // Update local state
         const updatedRooms = rooms.filter(r => r.id !== room.id);
         setRooms(updatedRooms);
         
@@ -629,7 +621,6 @@ const ManageRooms: React.FC = () => {
         </Tabs>
       </div>
 
-      {/* Add Room Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
@@ -783,7 +774,6 @@ const ManageRooms: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Room Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>

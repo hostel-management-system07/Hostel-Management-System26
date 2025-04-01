@@ -55,10 +55,10 @@ const Complaints: React.FC = () => {
   useEffect(() => {
     const filtered = complaints.filter(complaint => {
       const matchesSearch = 
-        complaint.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (complaint.studentName && complaint.studentName.toLowerCase().includes(searchTerm.toLowerCase()));
+        (complaint.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (complaint.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (complaint.roomNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (complaint.studentName?.toLowerCase() || '').includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || complaint.status === statusFilter;
       
