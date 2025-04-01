@@ -36,7 +36,8 @@ import {
   Users, 
   AlertTriangle,
   CheckCircle,
-  RefreshCcw
+  RefreshCcw,
+  Eye,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -82,6 +83,7 @@ const ManageRooms: React.FC = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showBulkAssignDialog, setShowBulkAssignDialog] = useState(false);
+  const [showViewMembersDialog, setShowViewMembersDialog] = useState(false);
   
   const [selectedRoom, setSelectedRoom] = useState<RoomType | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
@@ -500,6 +502,11 @@ const ManageRooms: React.FC = () => {
     setTargetRoomId('');
     setShowBulkAssignDialog(true);
   };
+  
+  const openViewMembersDialog = (room: RoomWithStudents) => {
+    setSelectedRoom(room);
+    setShowViewMembersDialog(true);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -685,6 +692,15 @@ const ManageRooms: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => openViewMembersDialog(room)}
+                                className="text-blue-500 hover:text-blue-700"
+                                title="View Members"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
                               <Button 
                                 size="sm" 
                                 variant="ghost"
@@ -1261,6 +1277,76 @@ const ManageRooms: React.FC = () => {
             >
               Assign Students
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Room Members Dialog */}
+      <Dialog open={showViewMembersDialog} onOpenChange={setShowViewMembersDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Room Members</DialogTitle>
+            <DialogDescription>
+              {selectedRoom && `Room ${selectedRoom.roomNumber}, Block ${selectedRoom.block}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            {selectedRoom && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <Home className="h-5 w-5 text-blue-500" />
+                    <h3 className="font-medium">Room Details</h3>
+                  </div>
+                  {getStatusBadge(selectedRoom.status)}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <p><span className="font-medium">Room Number:</span> {selectedRoom.roomNumber}</p>
+                  <p><span className="font-medium">Block:</span> {selectedRoom.block}</p>
+                  <p><span className="font-medium">Floor:</span> {selectedRoom.floor}</p>
+                  <p><span className="font-medium">Type:</span> {selectedRoom.type}</p>
+                  <p><span className="font-medium">Capacity:</span> {selectedRoom.capacity}</p>
+                  <p><span className="font-medium">Occupied:</span> {selectedRoom.occupied || 0}</p>
+                </div>
+                
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-2">Students ({(selectedRoom as RoomWithStudents)?.studentDetails?.length || 0})</h3>
+                  
+                  {(selectedRoom as RoomWithStudents)?.studentDetails && (selectedRoom as RoomWithStudents)?.studentDetails?.length > 0 ? (
+                    <div className="space-y-2">
+                      {(selectedRoom as RoomWithStudents).studentDetails?.map((student, index) => (
+                        <div key={index} className="bg-gray-50 border rounded p-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-medium">{student.name}</h4>
+                              <p className="text-xs text-gray-500">{student.registrationNumber || 'No ID'}</p>
+                            </div>
+                            <Badge variant="outline">{student.year ? `Year ${student.year}` : 'No Year'}</Badge>
+                          </div>
+                          <div className="mt-2 text-sm">
+                            <p><span className="text-gray-500">Email:</span> {student.email}</p>
+                            {student.department && (
+                              <p><span className="text-gray-500">Department:</span> {student.department}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 border rounded">
+                      <Users className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500">No students assigned to this room yet</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button onClick={() => setShowViewMembersDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -331,7 +331,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Blocks" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Blocks</SelectItem>
+                        <SelectItem value="">All Blocks</SelectItem>
                         {blocks.map((block) => (
                           <SelectItem key={block} value={block}>{block ? `Block ${block}` : 'Unknown'}</SelectItem>
                         ))}
@@ -346,7 +346,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Floors" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Floors</SelectItem>
+                        <SelectItem value="">All Floors</SelectItem>
                         {floors.map((floor) => (
                           <SelectItem key={floor.toString()} value={floor.toString()}>{floor ? `Floor ${floor}` : 'Unknown'}</SelectItem>
                         ))}
@@ -361,7 +361,7 @@ const RoomBooking: React.FC = () => {
                         <SelectValue placeholder="All Types" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="">All Types</SelectItem>
                         {roomTypes.map((type) => (
                           <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
                         ))}
